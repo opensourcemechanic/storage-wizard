@@ -2,6 +2,29 @@
 
 Read-only storage indexing and optimization tool with optional Python-Rust integration for performance-critical operations.
 
+## ⚠️ Disclaimer
+
+**THIS SOFTWARE IS EXPERIMENTAL AND PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.**
+
+The user assumes **ALL RISKS** associated with the use of this software, including but not limited to:
+
+- **Data Loss**: While designed to be read-only, bugs or misuse could potentially cause data corruption or loss
+- **System Performance**: Scanning large directories or computing file hashes may consume significant system resources
+- **Generated Scripts**: Any generated bash scripts or commands must be manually reviewed before execution
+- **Third-Party Dependencies**: This tool relies on external libraries that may have their own limitations and bugs
+
+**BY USING THIS SOFTWARE, YOU ACKNOWLEDGE AND AGREE THAT:**
+1. You are solely responsible for backing up your data before use
+2. The authors and contributors are not liable for any damages or losses
+3. You will review all generated commands before execution
+4. You use this software at your own risk
+
+**RECOMMENDATIONS:**
+- Always backup important data before running any storage analysis
+- Test on non-critical directories first
+- Review generated scripts thoroughly before execution
+- Monitor system resources during large scans
+
 ## Features
 
 - **Read-Only by Default**: Safe analysis without modifying files
