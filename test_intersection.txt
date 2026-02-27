@@ -1,8 +1,0 @@
-tests/testdirs/parallel1/file2.txt
-tests/testdirs/parallel1/file3.txt
-tests/testdirs/parallel1/shared_2way.txt
-tests/testdirs/parallel1/shared_3way.txt
-tests/testdirs/parallel2/file2.txt
-tests/testdirs/parallel2/file3.txt
-tests/testdirs/parallel2/shared_2way.txt
-tests/testdirs/parallel2/shared_3way.txt

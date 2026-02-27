@@ -202,3 +202,15 @@ paths.out
 !GLOB_*.md
 !MULTI_*.md
 !VISUALIZATION_*.md
+
+
+.coverage
+*.egg-info/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+paths.out
+duplicate_report.txt
