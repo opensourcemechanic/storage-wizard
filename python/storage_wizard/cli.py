@@ -20,6 +20,7 @@ from rich.panel import Panel
 from .core import StorageIndexer, MediaConsolidator, DuplicateDetector, OutputGenerator
 from . import treemap as _treemap
 from . import fast_scanner as _fast_scanner
+from . import fast_treemap as _fast_treemap
 
 app = typer.Typer(
     name="storage-wizard",
@@ -29,6 +30,97 @@ app = typer.Typer(
 
 console = Console()
 logger = logging.getLogger(__name__)
+
+
+@app.command("fast-treemap")
+def fast_treemap(
+    path: str = typer.Argument(..., help="Directory to scan for duplicate analysis"),
+    max_depth: Optional[int] = typer.Option(None, "--depth", "-d", 
+        help="Maximum directory depth to scan"),
+    include_hidden: bool = typer.Option(False, "--hidden", 
+        help="Include hidden files and directories"),
+    min_file_size: int = typer.Option(1024, "--min-size", "-s", 
+        help="Minimum file size to consider (bytes)"),
+    min_duplicate_size: float = typer.Option(10.0, "--min-duplicate", "-m",
+        help="Minimum duplicate size to report (MB)"),
+    sample_size: int = typer.Option(8192, "--sample-size",
+        help="Sample size for file hashing (bytes)"),
+) -> None:
+    """Fast treemap scan with duplicate detection using minimal metadata."""
+    console.print(f"[bold blue]🚀 Fast Treemap Scan[/bold blue]")
+    console.print(f"Scanning: [cyan]{path}[/cyan]")
+    console.print(f"Mode: Metadata-only with content sampling for duplicates")
+    
+    try:
+        scanner = _fast_treemap.FastTreemapScanner(
+            max_depth=max_depth,
+            include_hidden=include_hidden,
+            min_file_size=min_file_size,
+            sample_size=sample_size
+        )
+        root = scanner.scan(path)
+        stats = scanner.get_stats(root)
+        
+        # Display results
+        console.print(f"\n[bold]📊 Fast Treemap Results:[/bold]")
+        console.print(f"   Total nodes: [green]{stats['total_nodes']:,}[/green]")
+        console.print(f"   Directories: [blue]{stats['total_dirs']:,}[/blue]")
+        console.print(f"   Files: [yellow]{stats['total_files']:,}[/yellow]")
+        console.print(f"   Total size: [cyan]{stats['total_size'] / (1024**3):.2f}GB[/cyan]")
+        console.print(f"   Max depth: [cyan]{stats['max_depth']}[/cyan]")
+        console.print(f"   Files sampled: [green]{stats['files_sampled']:,}[/green]")
+        console.print(f"   Duplicate groups: [red]{stats['duplicate_groups']}[/red]")
+        console.print(f"   Errors: [red]{stats['errors']}[/red]")
+        console.print(f"   Scan time: [green]{stats['scan_time']:.2f}s[/green]")
+        
+        # Show duplicate analysis
+        duplicates = scanner.find_duplicate_subtrees(root)
+        
+        if not duplicates:
+            console.print(f"\n[bold green]🎉 No duplicate subtrees found![/bold green]")
+        else:
+            console.print(f"\n[bold]🔍 Found {len(duplicates)} potential duplicate groups:[/bold]")
+            console.print(f"   (showing only those > {min_duplicate_size}MB)\n")
+            
+            # Sort duplicates by total size
+            sorted_duplicates = sorted(
+                [(hash_val, nodes) for hash_val, nodes in duplicates.items()],
+                key=lambda x: sum(node.get_total_size() for node in x[1]),
+                reverse=True
+            )
+            
+            for i, (hash_val, nodes) in enumerate(sorted_duplicates, 1):
+                # Calculate total size and check threshold
+                total_size = sum(node.get_total_size() for node in nodes)
+                size_mb = total_size / (1024 * 1024)
+                
+                if size_mb < min_duplicate_size:
+                    continue
+                
+                console.print(f"[bold]{i}.[/bold] Duplicate group (hash: [dim]{hash_val[:12]}...[/dim])")
+                console.print(f"   Total size: [cyan]{size_mb:.1f}MB[/cyan] × [yellow]{len(nodes)}[/yellow] copies = [red]{size_mb * len(nodes):.1f}MB[/red]")
+                console.print(f"   Potential waste: [red]{size_mb * (len(nodes) - 1):.1f}MB[/red]")
+                
+                for j, node in enumerate(nodes, 1):
+                    node_size = node.get_total_size() / (1024 * 1024)
+                    node_files = node.get_total_files()
+                    depth_indicator = "  " * min(node.depth, 3)
+                    console.print(f"   {j}. {depth_indicator}[cyan]{node.name}/[/cyan] - [green]{node_size:.1f}MB[/green], [yellow]{node_files:,}[/yellow] files")
+                    console.print(f"      Path: [dim]{node.path}[/dim]")
+                
+                console.print()
+        
+        # Show errors if any
+        if scanner.errors:
+            console.print(f"\n[bold red]⚠️  Errors encountered:[/bold red]")
+            for error in scanner.errors[:5]:  # Show first 5 errors
+                console.print(f"   {error}")
+            if len(scanner.errors) > 5:
+                console.print(f"   ... and {len(scanner.errors) - 5} more errors")
+        
+    except Exception as e:
+        console.print(f"[bold red]Error: {e}[/bold red]")
+        raise typer.Exit(1)
 
 
 @app.command("fast-scan")
