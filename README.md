@@ -2,6 +2,28 @@
 
 Read-only storage indexing and optimization tool with optional Python-Rust integration for performance-critical operations.
 
+## Author
+
+**Brian Nitz** - Developed using [Windsurf](https://code.windsurf.ai/) with SWE-1.5 and Claude code models for AI-assisted development.
+
+### Development Approach
+
+This project was created using modern AI-assisted development practices:
+
+- **IDE**: [Windsurf](https://code.windsurf.ai/) - AI-powered development environment
+- **AI Assistant**: SWE-1.5 (Software Engineering) specialized code model
+- **Code Models**: Claude 3.5 Sonnet and Claude 3 Opus for code generation and analysis
+- **Methodology**: Iterative AI-human collaboration with checkpoint-based development
+- **Version Control**: Git with comprehensive documentation and feature checkpoints
+
+### AI-Assisted Development Features
+
+- **Intelligent Code Generation**: AI-powered implementation of complex algorithms
+- **Rapid Prototyping**: Fast iteration on features and optimizations
+- **Performance Optimization**: AI-suggested improvements for speed and memory efficiency
+- **Documentation**: AI-generated comprehensive documentation and examples
+- **Testing**: AI-assisted test case generation and validation
+
 ## ⚠️ Disclaimer
 
 **THIS SOFTWARE IS EXPERIMENTAL AND PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.**
@@ -241,6 +263,41 @@ For very large directories, consider:
 - Using Rust components for better performance
 - Processing in chunks with output files
 
+## Development
+
+### AI-Assisted Development Process
+
+This project showcases modern AI-assisted software development practices:
+
+#### Development Environment
+- **Primary IDE**: [Windsurf](https://code.windsurf.ai/) with SWE-1.5
+- **AI Models**: Claude 3.5 Sonnet (primary), Claude 3 Opus (analysis)
+- **Methodology**: Iterative AI-human collaboration
+- **Version Control**: Git with comprehensive checkpoint documentation
+
+#### Development Checkpoints
+The project uses checkpoint-based development with comprehensive documentation:
+
+- **v0.3.7**: Multi-path fast treemap with cross-device duplicate analysis
+- **v0.3.6**: Fast treemap with duplicate detection (20x speedup)
+- **v0.3.5**: Ultra-fast metadata scanner (125x speedup)
+- **v0.3.4**: Cache versioning and safety improvements
+- **v0.3**: Advanced set operations and WSL integration
+
+#### AI-Generated Features
+- **Performance Optimizations**: AI-suggested algorithm improvements
+- **Code Architecture**: AI-designed modular structure
+- **Documentation**: AI-generated comprehensive guides
+- **Testing**: AI-assisted test case creation and validation
+
+### Code Quality
+
+- **Type Hints**: Full type annotation coverage
+- **Documentation**: Comprehensive docstrings and guides
+- **Error Handling**: Robust error management and user feedback
+- **Performance**: Optimized for large-scale storage analysis
+- **Testing**: AI-assisted test coverage and validation
+
 ## Contributing
 
 1. Fork the repository
@@ -251,7 +308,9 @@ For very large directories, consider:
 
 ## License
 
-MIT License - see LICENSE file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+Copyright (c) 2026 Brian Nitz
 
 ## Support
 
