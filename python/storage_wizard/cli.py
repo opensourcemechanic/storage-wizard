@@ -19,6 +19,7 @@ from rich.panel import Panel
 
 from .core import StorageIndexer, MediaConsolidator, DuplicateDetector, OutputGenerator
 from . import treemap as _treemap
+from . import fast_scanner as _fast_scanner
 
 app = typer.Typer(
     name="storage-wizard",
@@ -28,6 +29,64 @@ app = typer.Typer(
 
 console = Console()
 logger = logging.getLogger(__name__)
+
+
+@app.command("fast-scan")
+def fast_scan(
+    path: str = typer.Argument(..., help="Directory to scan quickly"),
+    max_depth: Optional[int] = typer.Option(None, "--depth", "-d", 
+        help="Maximum directory depth to scan"),
+    include_hidden: bool = typer.Option(False, "--hidden", 
+        help="Include hidden files and directories"),
+    show_tree: bool = typer.Option(True, "--tree/--no-tree", 
+        help="Show directory tree structure"),
+) -> None:
+    """Ultra-fast directory structure analysis (metadata only)."""
+    console.print(f"[bold blue]🚀 Fast Scan Mode[/bold blue]")
+    console.print(f"Scanning: [cyan]{path}[/cyan]")
+    
+    try:
+        scanner = _fast_scanner.FastScanner(
+            max_depth=max_depth, 
+            include_hidden=include_hidden
+        )
+        root = scanner.scan(path)
+        stats = scanner.get_stats(root)
+        
+        # Display results
+        console.print(f"\n[bold]📊 Quick Scan Results:[/bold]")
+        console.print(f"   Total nodes: [green]{stats['total_nodes']:,}[/green]")
+        console.print(f"   Directories: [blue]{stats['total_dirs']:,}[/blue]")
+        console.print(f"   Files: [yellow]{stats['total_files']:,}[/yellow]")
+        console.print(f"   Max depth: [cyan]{stats['max_depth']}[/cyan]")
+        console.print(f"   Errors: [red]{stats['errors']}[/red]")
+        console.print(f"   Scan time: [green]{stats['scan_time']:.2f}s[/green]")
+        
+        # Show largest directories
+        largest_dirs = scanner.find_largest_dirs(root, top_n=10)
+        if largest_dirs:
+            console.print(f"\n[bold]📁 Largest directories (by node count):[/bold]")
+            for i, (dir_node, size) in enumerate(largest_dirs, 1):
+                depth_indicator = "  " * min(dir_node.depth, 5)
+                console.print(f"   {i:2d}. {depth_indicator}[cyan]{dir_node.name}/[/cyan] - [green]{size:,}[/green] items")
+        
+        # Show tree structure if requested
+        if show_tree:
+            console.print(f"\n[bold]🌳 Directory Structure (depth limited):[/bold]")
+            tree_depth = min(3, max_depth) if max_depth else 3
+            scanner.print_tree(root, max_depth=tree_depth)
+        
+        # Show errors if any
+        if scanner.errors:
+            console.print(f"\n[bold red]⚠️  Errors encountered:[/bold red]")
+            for error in scanner.errors[:5]:  # Show first 5 errors
+                console.print(f"   {error}")
+            if len(scanner.errors) > 5:
+                console.print(f"   ... and {len(scanner.errors) - 5} more errors")
+        
+    except Exception as e:
+        console.print(f"[bold red]Error: {e}[/bold red]")
+        raise typer.Exit(1)
 
 
 @app.command()
