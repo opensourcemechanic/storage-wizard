@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 @app.command("fast-treemap")
 def fast_treemap(
-    path: str = typer.Argument(..., help="Directory to scan for duplicate analysis"),
+    paths: List[str] = typer.Argument(..., help="Directories to scan for duplicate analysis"),
     max_depth: Optional[int] = typer.Option(None, "--depth", "-d", 
         help="Maximum directory depth to scan"),
     include_hidden: bool = typer.Option(False, "--hidden", 
@@ -48,43 +48,84 @@ def fast_treemap(
 ) -> None:
     """Fast treemap scan with duplicate detection using minimal metadata."""
     console.print(f"[bold blue]🚀 Fast Treemap Scan[/bold blue]")
-    console.print(f"Scanning: [cyan]{path}[/cyan]")
+    console.print(f"Scanning: [cyan]{', '.join(paths)}[/cyan]")
     console.print(f"Mode: Metadata-only with content sampling for duplicates")
     
     try:
-        scanner = _fast_treemap.FastTreemapScanner(
-            max_depth=max_depth,
-            include_hidden=include_hidden,
-            min_file_size=min_file_size,
-            sample_size=sample_size
-        )
-        root = scanner.scan(path)
-        stats = scanner.get_stats(root)
+        all_nodes = []
+        all_stats = []
+        total_duplicates = {}
         
-        # Display results
-        console.print(f"\n[bold]📊 Fast Treemap Results:[/bold]")
-        console.print(f"   Total nodes: [green]{stats['total_nodes']:,}[/green]")
-        console.print(f"   Directories: [blue]{stats['total_dirs']:,}[/blue]")
-        console.print(f"   Files: [yellow]{stats['total_files']:,}[/yellow]")
-        console.print(f"   Total size: [cyan]{stats['total_size'] / (1024**3):.2f}GB[/cyan]")
-        console.print(f"   Max depth: [cyan]{stats['max_depth']}[/cyan]")
-        console.print(f"   Files sampled: [green]{stats['files_sampled']:,}[/green]")
-        console.print(f"   Duplicate groups: [red]{stats['duplicate_groups']}[/red]")
-        console.print(f"   Errors: [red]{stats['errors']}[/red]")
-        console.print(f"   Scan time: [green]{stats['scan_time']:.2f}s[/green]")
+        # Scan each path
+        for i, path in enumerate(paths, 1):
+            console.print(f"\n[yellow]Scanning path {i}/{len(paths)}: {path}[/yellow]")
+            
+            scanner = _fast_treemap.FastTreemapScanner(
+                max_depth=max_depth,
+                include_hidden=include_hidden,
+                min_file_size=min_file_size,
+                sample_size=sample_size
+            )
+            root = scanner.scan(path)
+            stats = scanner.get_stats(root)
+            
+            all_nodes.append(root)
+            all_stats.append(stats)
+            
+            # Collect duplicates from this path
+            path_duplicates = scanner.find_duplicate_subtrees(root)
+            
+            # Merge duplicates across paths
+            for hash_val, nodes in path_duplicates.items():
+                if hash_val not in total_duplicates:
+                    total_duplicates[hash_val] = []
+                total_duplicates[hash_val].extend(nodes)
         
-        # Show duplicate analysis
-        duplicates = scanner.find_duplicate_subtrees(root)
+        # Display combined results
+        total_nodes = sum(s['total_nodes'] for s in all_stats)
+        total_dirs = sum(s['total_dirs'] for s in all_stats)
+        total_files = sum(s['total_files'] for s in all_stats)
+        total_size = sum(s['total_size'] for s in all_stats)
+        max_depth_found = max(s['max_depth'] for s in all_stats)
+        total_files_sampled = sum(s['files_sampled'] for s in all_stats)
+        total_errors = sum(s['errors'] for s in all_stats)
+        total_scan_time = sum(s['scan_time'] for s in all_stats)
         
-        if not duplicates:
-            console.print(f"\n[bold green]🎉 No duplicate subtrees found![/bold green]")
+        console.print(f"\n[bold]📊 Combined Fast Treemap Results:[/bold]")
+        console.print(f"   Paths scanned: [green]{len(paths)}[/green]")
+        console.print(f"   Total nodes: [green]{total_nodes:,}[/green]")
+        console.print(f"   Directories: [blue]{total_dirs:,}[/blue]")
+        console.print(f"   Files: [yellow]{total_files:,}[/yellow]")
+        console.print(f"   Total size: [cyan]{total_size / (1024**3):.2f}GB[/cyan]")
+        console.print(f"   Max depth: [cyan]{max_depth_found}[/cyan]")
+        console.print(f"   Files sampled: [green]{total_files_sampled:,}[/green]")
+        console.print(f"   Errors: [red]{total_errors}[/red]")
+        console.print(f"   Total scan time: [green]{total_scan_time:.2f}s[/green]")
+        
+        # Show per-path statistics
+        console.print(f"\n[bold]📋 Per-Path Statistics:[/bold]")
+        for i, (path, stats) in enumerate(zip(paths, all_stats), 1):
+            console.print(f"   {i}. [cyan]{path}[/cyan]")
+            console.print(f"      Nodes: {stats['total_nodes']:,}, Size: {stats['total_size'] / (1024**2):.1f}MB, Time: {stats['scan_time']:.2f}s")
+        
+        # Show cross-path duplicate analysis
+        # Filter duplicates to only show those with multiple paths
+        cross_path_duplicates = {}
+        for hash_val, nodes in total_duplicates.items():
+            # Check if nodes come from different paths
+            unique_paths = set(Path(node.path).parent for node in nodes)
+            if len(unique_paths) > 1:  # Duplicates across different paths
+                cross_path_duplicates[hash_val] = nodes
+        
+        if not cross_path_duplicates:
+            console.print(f"\n[bold green]🎉 No cross-path duplicate subtrees found![/bold green]")
         else:
-            console.print(f"\n[bold]🔍 Found {len(duplicates)} potential duplicate groups:[/bold]")
+            console.print(f"\n[bold]🔍 Found {len(cross_path_duplicates)} cross-path duplicate groups:[/bold]")
             console.print(f"   (showing only those > {min_duplicate_size}MB)\n")
             
             # Sort duplicates by total size
             sorted_duplicates = sorted(
-                [(hash_val, nodes) for hash_val, nodes in duplicates.items()],
+                [(hash_val, nodes) for hash_val, nodes in cross_path_duplicates.items()],
                 key=lambda x: sum(node.get_total_size() for node in x[1]),
                 reverse=True
             )
@@ -97,26 +138,38 @@ def fast_treemap(
                 if size_mb < min_duplicate_size:
                     continue
                 
-                console.print(f"[bold]{i}.[/bold] Duplicate group (hash: [dim]{hash_val[:12]}...[/dim])")
+                console.print(f"[bold]{i}.[/bold] Cross-path duplicate group (hash: [dim]{hash_val[:12]}...[/dim])")
                 console.print(f"   Total size: [cyan]{size_mb:.1f}MB[/cyan] × [yellow]{len(nodes)}[/yellow] copies = [red]{size_mb * len(nodes):.1f}MB[/red]")
                 console.print(f"   Potential waste: [red]{size_mb * (len(nodes) - 1):.1f}MB[/red]")
                 
-                for j, node in enumerate(nodes, 1):
-                    node_size = node.get_total_size() / (1024 * 1024)
-                    node_files = node.get_total_files()
-                    depth_indicator = "  " * min(node.depth, 3)
-                    console.print(f"   {j}. {depth_indicator}[cyan]{node.name}/[/cyan] - [green]{node_size:.1f}MB[/green], [yellow]{node_files:,}[/yellow] files")
-                    console.print(f"      Path: [dim]{node.path}[/dim]")
+                # Group nodes by path
+                path_groups = {}
+                for node in nodes:
+                    node_path = Path(node.path)
+                    # Find which original path this belongs to
+                    for original_path in paths:
+                        if node_path.is_relative_to(original_path):
+                            if original_path not in path_groups:
+                                path_groups[original_path] = []
+                            path_groups[original_path].append(node)
+                            break
+                
+                for j, (path, path_nodes) in enumerate(path_groups.items(), 1):
+                    console.print(f"   [bold]Path {j}:[/bold] [cyan]{path}[/cyan]")
+                    for k, node in enumerate(path_nodes, 1):
+                        node_size = node.get_total_size() / (1024 * 1024)
+                        node_files = node.get_total_files()
+                        depth_indicator = "  " * min(node.depth, 3)
+                        console.print(f"      {k}. {depth_indicator}[cyan]{node.name}/[/cyan] - [green]{node_size:.1f}MB[/green], [yellow]{node_files:,}[/yellow] files")
+                        console.print(f"         Path: [dim]{node.path}[/dim]")
                 
                 console.print()
         
         # Show errors if any
-        if scanner.errors:
+        if total_errors > 0:
             console.print(f"\n[bold red]⚠️  Errors encountered:[/bold red]")
-            for error in scanner.errors[:5]:  # Show first 5 errors
-                console.print(f"   {error}")
-            if len(scanner.errors) > 5:
-                console.print(f"   ... and {len(scanner.errors) - 5} more errors")
+            console.print(f"   Total errors: {total_errors}")
+            # Note: Detailed error reporting could be added here if needed
         
     except Exception as e:
         console.print(f"[bold red]Error: {e}[/bold red]")
