@@ -1,7 +1,7 @@
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
- 
+
 [project]
 name = "storage-wizard"
 version = "0.1.0"
@@ -14,12 +14,18 @@ dependencies = [
     "pydantic>=1.10.0",
     "qrcode[pil]>=7.0.0",
 ] 
+
 [project.optional-dependencies]
-rust = ["maturin>=1.0,<2.0"]
 dev = ["pytest>=7.0.0", "black>=22.0.0", "ruff>=0.0.200"]
- 
+
 [project.scripts]
 storage-wizard = "storage_wizard.cli:main"
- 
+
 [tool.setuptools.packages.find]
 where = ["python"]
+
+[tool.setuptools]
+build_editable = true
+
+[tool.setuptools.package-data]
+storage_wizard = ["py.typed"]
