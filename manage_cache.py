@@ -6,6 +6,7 @@ Manage cached treemap files - list, remove, clean up.
 import json
 import sys
 from pathlib import Path
+from collections import defaultdict
 from datetime import datetime
 
 STORE_DIR = Path.home() / ".storage-wizard" / "treemaps"
@@ -25,57 +26,106 @@ def list_cache():
         return
     
     print("=== CACHED TREEMAPS ===")
-    print(f"{'Label':>12} {'Size':>10} {'Files':>8} {'File Size':>10} {'Scanned':>19} {'Path'}")
-    print("-" * 90)
+    print(f"{'Label':>12} {'Versions':>8} {'Size':>10} {'Files':>8} {'File Size':>10} {'Latest Scan':>19} {'Path'}")
+    print("-" * 110)
     
     total_cache_size = 0
+    # Group files by label
+    label_groups = defaultdict(list)
+    
     for file in sorted(STORE_DIR.glob("*.json")):
         try:
             data = json.loads(file.read_text(encoding="utf-8"))
-            label = file.stem
-            file_size = file.stat().st_size
-            total_cache_size += file_size
-            
-            tree_size = data['tree'].get('size', 0)
-            file_count = data['tree'].get('file_count', 0)
-            scanned = data['scanned_at'][:19]
-            path = data['root_path']
-            
-            print(f"{label:>12} {format_size(tree_size):>10} {file_count:>8,} {format_size(file_size):>10} {scanned:>19} {path}")
-            
+            label = data['label']
+            label_groups[label].append((file, data))
         except Exception as e:
             print(f"{file.stem:>12} ERROR: {e}")
     
-    print("-" * 90)
+    for label in sorted(label_groups.keys()):
+        files = label_groups[label]
+        # Sort by timestamp (newest first)
+        files.sort(key=lambda x: x[0].stat().st_mtime, reverse=True)
+        
+        # Get latest version
+        latest_file, latest_data = files[0]
+        file_size = latest_file.stat().st_size
+        total_cache_size += file_size
+        
+        tree_size = latest_data['tree'].get('size', 0)
+        file_count = latest_data['tree'].get('file_count', 0)
+        scanned = latest_data['scanned_at'][:19]
+        path = latest_data['root_path']
+        
+        version_count = len(files)
+        
+        print(f"{label:>12} {version_count:>8} {format_size(tree_size):>10} {file_count:>8,} {format_size(file_size):>10} {scanned:>19} {path}")
+        
+        # Show versions if more than 1
+        if version_count > 1:
+            for i, (file, data) in enumerate(files[1:3], 1):  # Show next 2 versions
+                file_scanned = data['scanned_at'][:19]
+                print(f"{'':>12} {'v'+str(i+1):>8} {'':>10} {'':>8} {format_size(file.stat().st_size):>10} {file_scanned:>19} {file.name}")
+            if version_count > 3:
+                print(f"{'':>12} {'+{} more'.format(version_count-3):>8}")
+    
+    print("-" * 110)
     print(f"Total cache size: {format_size(total_cache_size)}")
 
 def remove_label(label):
-    """Remove a specific label from cache."""
-    cache_file = STORE_DIR / f"{label}.json"
+    """Remove a specific label and all its versions from cache."""
+    import sys
+    from storage_wizard.treemap import get_existing_treemap_versions
     
-    if not cache_file.exists():
+    # Check for versioned files
+    versions = get_existing_treemap_versions(label)
+    main_file = STORE_DIR / f"{label}.json"
+    
+    files_to_remove = []
+    
+    if main_file.exists():
+        files_to_remove.append(main_file)
+    
+    for timestamp, version_file in versions:
+        files_to_remove.append(version_file)
+    
+    if not files_to_remove:
         print(f"Label '{label}' not found in cache.")
         return False
     
-    try:
-        # Get info before deletion
-        data = json.loads(cache_file.read_text(encoding="utf-8"))
-        size = data['tree'].get('size', 0)
-        files = data['tree'].get('file_count', 0)
-        file_size = cache_file.stat().st_size
-        
-        # Delete the file
-        cache_file.unlink()
-        
-        print(f"✓ Removed label '{label}' from cache")
-        print(f"  - Directory: {data['root_path']}")
-        print(f"  - Size: {format_size(size)} ({files:,} files)")
-        print(f"  - Cache file: {format_size(file_size)}")
-        return True
-        
-    except Exception as e:
-        print(f"Error removing label '{label}': {e}")
+    # Show what will be removed
+    total_size = 0
+    print(f"Files to remove for label '{label}':")
+    for file in files_to_remove:
+        size = file.stat().st_size
+        total_size += size
+        if file == main_file:
+            print(f"  - {file.name} (main version)")
+        else:
+            timestamp_str = file.stem.split("_")[-2:]  # Get timestamp part
+            print(f"  - {file.name} (version {'_'.join(timestamp_str)})")
+    
+    print(f"Total space to be freed: {format_size(total_size)}")
+    
+    # Confirm removal
+    print(f"\n⚠️  This will remove {len(files_to_remove)} file(s) for label '{label}'")
+    print("Type 'yes' to confirm: ", end="")
+    
+    if input().lower() != 'yes':
+        print("Cancelled.")
         return False
+    
+    # Remove files
+    removed_count = 0
+    for file in files_to_remove:
+        try:
+            file.unlink()
+            removed_count += 1
+        except Exception as e:
+            print(f"Error removing {file}: {e}")
+    
+    print(f"✓ Removed {removed_count} files for label '{label}'")
+    print(f"✓ Freed {format_size(total_size)} of cache space")
+    return True
 
 def remove_multiple_labels(labels):
     """Remove multiple labels from cache."""

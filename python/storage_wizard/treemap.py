@@ -345,12 +345,78 @@ def _store_path(store_dir: Path, label: str) -> Path:
     return store_dir / f"{safe}.json"
 
 
+def _store_path_with_version(store_dir: Path, label: str) -> Path:
+    """Generate versioned cache path with simple version number."""
+    safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in label)
+    
+    # Find existing versions
+    existing_versions = []
+    for file in store_dir.glob(f"{safe}_v*.json"):
+        try:
+            # Extract version number
+            parts = file.stem.split("_v")
+            if len(parts) == 2:
+                version_num = int(parts[1])
+                existing_versions.append(version_num)
+        except ValueError:
+            continue
+    
+    # Next version number
+    next_version = max(existing_versions + [0]) + 1
+    
+    return store_dir / f"{safe}_v{next_version}.json"
+
+
+def get_existing_treemap_versions(label: str, store_dir: Optional[Path] = None) -> list:
+    """Get list of existing versions for a label."""
+    store = store_dir or DEFAULT_STORE
+    safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in label)
+    
+    versions = []
+    for file in store.glob(f"{safe}_v*.json"):
+        try:
+            # Extract version number
+            parts = file.stem.split("_v")
+            if len(parts) == 2:
+                version_num = int(parts[1])
+                versions.append((version_num, file))
+        except ValueError:
+            continue
+    
+    # Sort by version number (newest first)
+    versions.sort(reverse=True)
+    return versions
+
+
+def compare_treemaps(old_data: dict, new_data: dict) -> dict:
+    """Compare two treemaps and return differences."""
+    old_tree = old_data['tree']
+    new_tree = new_data['tree']
+    
+    comparison = {
+        'size_change': new_tree.get('size', 0) - old_tree.get('size', 0),
+        'files_change': new_tree.get('file_count', 0) - old_tree.get('file_count', 0),
+        'old_scanned': old_data['scanned_at'],
+        'new_scanned': new_data['scanned_at'],
+        'time_diff_hours': (datetime.datetime.fromisoformat(new_data['scanned_at']) - 
+                           datetime.datetime.fromisoformat(old_data['scanned_at'])).total_seconds() / 3600
+    }
+    
+    return comparison
+
+
 def save_treemap(node: TreeNode, label: str, root_path: str,
-                 slow: bool, store_dir: Optional[Path] = None) -> Path:
-    """Persist a treemap to the store directory."""
+                 slow: bool, store_dir: Optional[Path] = None, 
+                 force: bool = False) -> Path:
+    """Persist a treemap to the store directory with simple versioning."""
     store = store_dir or DEFAULT_STORE
     store.mkdir(parents=True, exist_ok=True)
-    dest = _store_path(store, label)
+    
+    # Check for existing cache
+    old_dest = _store_path(store, label)
+    existing_versions = get_existing_treemap_versions(label, store)
+    
+    # Create new data
     payload = {
         "label": label,
         "root_path": root_path,
@@ -358,6 +424,25 @@ def save_treemap(node: TreeNode, label: str, root_path: str,
         "scanned_at": datetime.datetime.now().isoformat(),
         "tree": node.to_dict(),
     }
+    
+    # Handle existing cache
+    if old_dest.exists() or existing_versions:
+        if force:
+            # Force mode - create versioned file
+            dest = _store_path_with_version(store, label)
+            print(f"✓ Creating new version: {dest.name}")
+        else:
+            # Default behavior - create versioned file
+            dest = _store_path_with_version(store, label)
+            if old_dest.exists():
+                print(f"⚠️  Existing cache found for '{label}', creating version: {dest.name}")
+            else:
+                print(f"✓ Creating additional version: {dest.name}")
+    else:
+        # No existing cache - use standard path
+        dest = old_dest
+    
+    # Save the data
     dest.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return dest
 

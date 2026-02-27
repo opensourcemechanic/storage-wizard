@@ -866,6 +866,8 @@ def treemap_scan(
         help="Display only directories suspected of being duplicates (prune unique subtrees)"),
     save: bool = typer.Option(True, "--save/--no-save",
         help="Persist the treemap to the store for later comparison"),
+    force: bool = typer.Option(False, "--force", "-f",
+        help="Force overwrite existing cache without prompting (creates versioned file)"),
     store_dir: Optional[str] = typer.Option(None, "--store",
         help="Override the treemap store directory (default: ~/.storage-wizard/treemaps/)"),
     display_depth: Optional[int] = typer.Option(None, "--depth", "-d",
@@ -925,7 +927,7 @@ def treemap_scan(
                 console.print(f"    [dim]… and {len(denied) - 5} more[/dim]")
 
         if save:
-            dest = _treemap.save_treemap(node, lbl, root, slow, store)
+            dest = _treemap.save_treemap(node, lbl, root, slow, store, force)
             console.print(f"  [green]Saved →[/green] {dest}")
 
         scanned.append((lbl, node, root, scanned_at))
