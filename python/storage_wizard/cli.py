@@ -32,6 +32,75 @@ console = Console()
 logger = logging.getLogger(__name__)
 
 
+def _parse_size_string(size_str: str) -> int:
+    """Parse size string like '100MB', '1GB', '500KB' into bytes."""
+    size_str = size_str.upper().strip()
+    
+    # Extract number and unit
+    import re
+    match = re.match(r'^(\d+(?:\.\d+)?)\s*(KB|MB|GB|TB)?$', size_str)
+    if not match:
+        raise ValueError(f"Invalid size format: {size_str}. Use formats like 100MB, 1GB, 500KB")
+    
+    number = float(match.group(1))
+    unit = match.group(2) or 'B'  # Default to bytes if no unit
+    
+    multipliers = {
+        'B': 1,
+        'KB': 1024,
+        'MB': 1024 ** 2,
+        'GB': 1024 ** 3,
+        'TB': 1024 ** 4,
+    }
+    
+    return int(number * multipliers[unit])
+
+
+def _filter_treemap_node(node, media_only: bool = False, ignore_system: bool = False) -> 'TreeNode':
+    """Apply filters to a treemap node and return a filtered copy."""
+    from . import treemap as _treemap
+    
+    # Create a new node with the same basic info
+    filtered_node = _treemap.TreeNode(node.name, node.path, node.depth)
+    filtered_node.size = 0
+    filtered_node.file_count = 0
+    filtered_node.mtime = node.mtime
+    filtered_node.hash = node.hash
+    
+    # Filter children
+    for child in node.children:
+        # Apply system file filtering
+        if ignore_system and _treemap._is_system(child.name):
+            continue
+        
+        # Apply media-only filtering for files (leaf nodes with no children)
+        if media_only and not child.children:  # This is a file (leaf node)
+            if not _treemap._ext_is_media(child.name):
+                continue
+        
+        # Recursively filter child
+        filtered_child = _filter_treemap_node(child, media_only, ignore_system)
+        
+        # Only add non-empty children
+        if filtered_child.size > 0 or filtered_child.children:
+            filtered_node.children.append(filtered_child)
+            filtered_node.size += filtered_child.size
+            filtered_node.file_count += filtered_child.file_count
+    
+    # Recalculate hash for filtered node
+    if filtered_node.children or filtered_node.file_count > 0:
+        # Rebuild hash based on filtered children
+        child_parts = [(c.name, c.hash) for c in filtered_node.children]
+        if child_parts:
+            filtered_node.hash = _treemap._hash_from_parts(child_parts)
+        else:
+            filtered_node.hash = _treemap.EMPTY_HASH
+    else:
+        filtered_node.hash = _treemap.EMPTY_HASH
+    
+    return filtered_node
+
+
 @app.command("fast-treemap")
 def fast_treemap(
     paths: List[str] = typer.Argument(..., help="Directories to scan for duplicate analysis"),
@@ -1170,6 +1239,12 @@ def treemap_compare(
         help="Max display depth (default: unlimited)"),
     sparse: bool = typer.Option(False, "--sparse",
         help="Display only directories suspected of being duplicates (prune unique subtrees)"),
+    min_size: Optional[str] = typer.Option(None, "--min-size", "-s",
+        help="Minimum size threshold for duplicates (e.g., 100MB, 1GB, 500KB)"),
+    media_only: bool = typer.Option(False, "--media-only", "-m",
+        help="Filter to media and document files only (images, video, audio, PDF, Office docs, archives)"),
+    ignore_system: bool = typer.Option(False, "--ignore-system",
+        help="Filter out system directories and files (Recycle Bin, pagefile, node_modules, .git, etc.)"),
 ) -> None:
     """Compare previously saved treemaps by label."""
     store = Path(store_dir) if store_dir else None
@@ -1186,11 +1261,47 @@ def treemap_compare(
         console.print("[red]No treemaps loaded — nothing to compare.[/red]")
         raise typer.Exit(1)
 
+    # Apply filters to loaded trees if specified
+    if media_only or ignore_system:
+        console.print(f"[bold yellow]Applying filters to loaded treemaps...[/bold yellow]")
+        filtered_trees = []
+        for lbl, root in trees:
+            filtered_root = _filter_treemap_node(root, media_only=media_only, ignore_system=ignore_system)
+            filtered_trees.append((lbl, filtered_root))
+            console.print(f"  [dim]Filtered {lbl}[/dim]")
+        trees = filtered_trees
+
     dup_map = _treemap.find_duplicate_nodes(trees)
+    
+    # Filter duplicates by minimum size if specified
+    if min_size:
+        min_size_bytes = _parse_size_string(min_size)
+        filtered_dup_map = {}
+        for hash_val, entries in dup_map.items():
+            # Check if any node in this duplicate group meets the size threshold
+            if any(entry[1].size >= min_size_bytes for entry in entries):
+                filtered_dup_map[hash_val] = entries
+        dup_map = filtered_dup_map
+        
+        if dup_map:
+            console.print(f"[bold green]Filtered to duplicates ≥ {min_size}[/bold green]")
+        else:
+            console.print(f"[yellow]No duplicates found ≥ {min_size}[/yellow]")
+            return
+    
     _treemap.display_trees(trees, dup_map, max_depth=display_depth, sparse=sparse)
 
     if dup_map:
         console.print(f"[bold yellow]{len(dup_map)}[/bold yellow] duplicate subtree hash(es) found.")
+        if min_size:
+            console.print(f"[dim]Showing only duplicates ≥ {min_size}[/dim]")
+        if media_only or ignore_system:
+            filter_desc = []
+            if media_only:
+                filter_desc.append("media-only")
+            if ignore_system:
+                filter_desc.append("ignore-system")
+            console.print(f"[dim]Filters applied: {', '.join(filter_desc)}[/dim]")
     else:
         console.print("[green]No duplicate subtrees found.[/green]")
 
