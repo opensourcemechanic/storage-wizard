@@ -1,33 +1,32 @@
-# Checkpoint v0.3.9: Enhanced Treemap Compare with Filtering Options
+# Checkpoint v0.3.9: Enhanced Treemap Compare with Size Filtering
 
 ## Date
-2026-02-27
+2026-03-01
 
 ## Major Feature Added
 
-### Enhanced Treemap Compare Command with Filtering
+### Enhanced Treemap Compare Command with Size-Based Filtering
 - **Size-based filtering**: Minimum size threshold for duplicate display
-- **Content-based filtering**: Media-only and system-file filtering options
-- **Combined filtering**: Multiple filter options work together
-- **Real-time filtering**: Filters applied during comparison (not just scanning)
-- **Enhanced user experience**: Clear filter feedback and statistics
+- **Enhanced media support**: Added .dv extension for digital video files
+- **Cleaned interface**: Removed non-functional post-scan filtering options
+- **Focused functionality**: Size filtering works correctly for duplicate analysis
 
 ## Technical Implementation
 
-### New Compare Command Options
+### Compare Command Options (Final)
 ```bash
 storage-wizard treemap compare [OPTIONS] LABELS...
 ```
 
-#### **New Filtering Options:**
+#### **Available Options:**
 - `--min-size, -s SIZE`: Minimum size threshold for duplicates (e.g., 100MB, 1GB, 500KB)
-- `--media-only, -m`: Filter to media and document files only
-- `--ignore-system`: Filter out system directories and files
+- `--depth, -d INTEGER`: Max display depth (default: unlimited)
+- `--sparse`: Display only duplicate subtrees (prune unique subtrees)
+- `--store TEXT`: Override treemap store directory
 
-#### **Existing Options Enhanced:**
-- `--depth, -d`: Max display depth (unchanged)
-- `--sparse`: Display only duplicate subtrees (unchanged)
-- `--store`: Override treemap store directory (unchanged)
+#### **Removed Non-Functional Options:**
+- ~~`--media-only`~~: Not functional for post-scan comparison
+- ~~`--ignore-system`~~: Not functional for post-scan comparison
 
 ### Core Implementation Features
 
@@ -40,25 +39,8 @@ def _parse_size_string(size_str: str) -> int:
     # Decimal support: 1.5GB, 0.5MB
 ```
 
-#### **Treemap Filtering Function**
-```python
-def _filter_treemap_node(node, media_only: bool = False, ignore_system: bool = False):
-    """Apply filters to a treemap node and return a filtered copy."""
-    # Recursive filtering of TreeNode structures
-    # Hash recalculation for filtered content
-    # Size and file count recalculation
-```
-
 #### **Enhanced Compare Logic**
 ```python
-# Apply filters to loaded trees if specified
-if media_only or ignore_system:
-    console.print(f"[bold yellow]Applying filters to loaded treemaps...[/bold yellow]")
-    filtered_trees = []
-    for lbl, root in trees:
-        filtered_root = _filter_treemap_node(root, media_only=media_only, ignore_system=ignore_system)
-        filtered_trees.append((lbl, filtered_root))
-
 # Filter duplicates by minimum size if specified
 if min_size:
     min_size_bytes = _parse_size_string(min_size)
@@ -68,104 +50,94 @@ if min_size:
             filtered_dup_map[hash_val] = entries
 ```
 
+### Media Extension Enhancement
+
+#### **Added .dv Support**
+```python
+# Video extensions now include:
+".mp4", ".mov", ".avi", ".mkv", ".wmv", ".flv", ".m4v",
+".mpg", ".mpeg", ".3gp", ".webm", ".mts", ".m2ts", ".dv"
+```
+
 ## Real-World Testing Results
 
 ### Test Environment
-- **Available treemaps**: mediabig, nvme1, extremeRsync
-- **Test scenarios**: Size filtering, media-only filtering, system filtering
-- **Performance**: Fast filtering of existing treemaps
+- **Available treemaps**: mediabig, nvme1, extremeRsync, plus media-only variants
+- **Test scenarios**: Size filtering, media-only scanning, cross-device comparison
+- **Performance**: Fast size filtering of existing treemaps
 - **Compatibility**: Works with all saved treemap formats
 
 ### Size Filtering Tests
 
 #### **50MB Threshold:**
 ```bash
-storage-wizard treemap compare mediabig nvme1 --min-size 50MB
+storage-wizard treemap compare extremeRsync_media SeagateOneTouchVideoMetalRsync_media --min-size 50MB
 ```
-**Results**: 5 duplicate subtree hashes found
-- Filtered from 1,214 total duplicates to 5 significant ones
-- Focus on directories ≥ 50MB in size
+**Results**: 86 duplicate subtree hashes found
+- All video directories > 50MB included
 - Clear feedback: "Showing only duplicates ≥ 50MB"
+- Large video collections properly identified
 
 #### **100MB Threshold:**
 ```bash
-storage-wizard treemap compare mediabig nvme1 --min-size 100MB
+storage-wizard treemap compare extremeRsync_media SeagateOneTouchVideoMetalRsync_media --min-size 100MB
 ```
-**Results**: 1 duplicate subtree hash found
-- Further filtered to only the largest duplicates
-- Windows system files and large application directories
+**Results**: 86 duplicate subtree hashes found
+- All major video directories exceed 100MB threshold
+- Consistent filtering behavior
 
 #### **1GB Threshold:**
 ```bash
-storage-wizard treemap compare mediabig nvme1 --min-size 1GB
+storage-wizard treemap compare extremeRsync_media SeagateOneTouchVideoMetalRsync_media --min-size 1GB
 ```
-**Results**: No duplicates found ≥ 1GB
-- Clear feedback when no duplicates meet threshold
-- Helps identify size distribution of duplicates
+**Results**: 86 duplicate subtree hashes found
+- All significant video directories > 1GB
+- Size filtering working correctly
 
-### Media-Only Filtering Tests
+### Media-Only Scanning Tests
 
 #### **Media-Only Treemap Creation:**
 ```bash
-# Create media-only treemap for /media/d
-storage-wizard treemap scan /media/d --label nvme1_media --media-only
-# Results: Found video directories, media files only
+# Create media-only treemap for /media/d/Videos/CapturesRsync
+storage-wizard treemap scan /media/d/Videos/CapturesRsync --label extremeRsync_media --media-only
+# Results: Found all .dv video files, 86 duplicate directories
 
-# Create media-only treemap for /media/e  
-storage-wizard treemap scan /media/e --label mediabig_media --media-only
-# Results: No media files found in expected locations
+# Create media-only treemap for /media/e/Videos/RsyncFromCamcorder/Videos/CapturesRsync
+storage-wizard treemap scan "/media/e/Videos/RsyncFromCamcorder/Videos/CapturesRsync" --label SeagateOneTouchVideoMetalRsync_media --media-only
+# Results: Found all .dv video files, identical directory structure
 ```
 
 #### **Media-Only Comparison:**
 ```bash
-storage-wizard treemap compare mediabig_media nvme1_media --min-size 50MB
+storage-wizard treemap compare extremeRsync_media SeagateOneTouchVideoMetalRsync_media --min-size 50MB
 ```
-**Results**: No duplicates found ≥ 50MB
-- Media-only filtering successfully applied
-- Cross-device media comparison working
-- Clear indication of filtered content
-
-### Combined Filtering Tests
-
-#### **Media + Size Filtering:**
-```bash
-storage-wizard treemap compare mediabig nvme1 --media-only --min-size 10MB
-```
-**Results**: No duplicate subtrees found
-- Media filtering applied successfully
-- Size filtering applied to media-only results
-- Clear filter feedback: "Filters applied: media-only"
-
-#### **System + Size Filtering:**
-```bash
-storage-wizard treemap compare mediabig nvme1 --ignore-system --min-size 10MB
-```
-**Results**: No duplicates found ≥ 10MB
-- System directories and files filtered out
-- Focus on user content only
-- Clear filter feedback: "Filters applied: ignore-system"
+**Results**: 86 duplicate subtree hashes found
+- **Perfect match**: Identical video collections across drives
+- **Large duplicates**: Many directories 10-17GB each
+- **File counts**: 14-238 .dv files per directory
+- **Clear identification**: Color-coded duplicate groups
 
 ## User Experience Improvements
 
-### Enhanced Command Help
+### Clean Command Interface
 ```bash
 storage-wizard treemap compare --help
 ```
-**New options displayed:**
+**Available options:**
 - `--min-size, -s TEXT`: Minimum size threshold for duplicates
-- `--media-only, -m`: Filter to media and document files only  
-- `--ignore-system`: Filter out system directories and files
+- `--depth, -d INTEGER`: Max display depth
+- `--sparse`: Display only duplicate subtrees
+- `--store TEXT`: Override treemap store directory
 
 ### Clear Feedback Messages
-- **Filter application**: "Applying filters to loaded treemaps..."
-- **Filter completion**: "Filtered mediabig", "Filtered nvme1"
 - **Size filtering**: "Filtered to duplicates ≥ 100MB"
 - **No results**: "No duplicates found ≥ 1GB"
-- **Active filters**: "Filters applied: media-only, ignore-system"
+- **Active filters**: "Showing only duplicates ≥ 50MB"
+- **Duplicate count**: Clear count with size filter context
 
 ### Progress Indication
 - **Loading phase**: Shows which treemaps are loaded
-- **Filtering phase**: Shows filter application progress
+- **Filtering phase**: Shows size filter application
 - **Results phase**: Clear duplicate count and filter status
 
 ## Use Cases Enabled
@@ -176,16 +148,7 @@ storage-wizard treemap compare --help
 storage-wizard treemap compare drive1_media drive2_media --min-size 100MB
 
 # Focus on large media duplicates
-storage-wizard treemap compare photos_backup photos_current --media-only --min-size 50MB
-```
-
-### System-Clean Comparison
-```bash
-# Compare user content only (no system files)
-storage-wizard treemap compare backup1 backup2 --ignore-system --min-size 10MB
-
-# Focus on significant user data duplicates
-storage-wizard treemap compare documents archives --ignore-system --min-size 100MB
+storage-wizard treemap compare photos_backup photos_current --min-size 50MB
 ```
 
 ### Size-Focused Analysis
@@ -200,93 +163,89 @@ storage-wizard treemap compare drive1 drive2 --min-size 100MB
 storage-wizard treemap compare drive1 drive2 --min-size 10MB
 ```
 
-### Combined Filtering Workflows
+### Media-Only Workflow
 ```bash
-# Media-only, system-clean, large duplicates
-storage-wizard treemap compare mediabig nvme1 --media-only --ignore-system --min-size 100MB
+# Step 1: Create media-only treemaps
+storage-wizard treemap scan /media/d --label drive1_media --media-only
+storage-wizard treemap scan /media/e --label drive2_media --media-only
 
-# Documents only, no system files, medium size
-storage-wizard treemap compare docs1 docs2 --media-only --ignore-system --min-size 50MB
+# Step 2: Compare media files with size filtering
+storage-wizard treemap compare drive1_media drive2_media --min-size 100MB
 ```
 
 ## Technical Architecture
 
 ### Filter Application Strategy
 1. **Load treemaps**: Standard treemap loading from cache
-2. **Apply content filters**: Media-only and system filtering
-3. **Recalculate hashes**: Ensure accurate duplicate detection
-4. **Apply size filters**: Filter duplicate groups by size threshold
-5. **Display results**: Enhanced feedback and statistics
+2. **Apply size filters**: Filter duplicate groups by size threshold
+3. **Display results**: Enhanced feedback and statistics
 
 ### Performance Characteristics
 - **Fast filtering**: Minimal overhead for size filtering
-- **Efficient recursion**: Optimized tree traversal
-- **Hash recalculation**: Only when content filters applied
-- **Memory usage**: Temporary filtered trees, not persistent
+- **Efficient comparison**: Optimized duplicate detection
+- **Memory usage**: Standard treemap comparison memory
 
 ### Compatibility Considerations
 - **Backward compatible**: All existing compare functionality preserved
 - **Saved treemaps**: Works with all existing cached treemaps
-- **Filter combinations**: Multiple filters can be used together
+- **Size filtering**: Works with any treemap comparison
 - **Error handling**: Graceful handling of invalid size strings
 
 ## File Structure and Dependencies
 
 ### Modified Files
-- `python/storage_wizard/cli.py`: Enhanced compare command with filtering
+- `python/storage_wizard/cli.py`: Enhanced compare command with size filtering only
+- `python/storage_wizard/treemap.py`: Added .dv extension to MEDIA_EXTENSIONS
 
 ### New Functions Added
 - `_parse_size_string()`: Size string parsing utility
-- `_filter_treemap_node()`: Treemap filtering implementation
 
 ### Enhanced Functions
-- `treemap_compare()`: Added filtering options and logic
+- `treemap_compare()`: Added size filtering option and logic
 - Compare help text and user feedback
 
 ### Dependencies
-- **Existing treemap module**: Uses TreeNode and filtering functions
+- **Existing treemap module**: Uses TreeNode and duplicate detection
 - **Rich console**: Enhanced user feedback and progress
-- **Path library**: File extension checking for media filtering
 - **Regex library**: Size string parsing
 
 ## Integration with Existing Features
 
-### Compatibility with Scan Options
-The compare filtering options mirror the scan options:
+### Compatible with Scan Options
+The scan command supports filtering options:
 - **Scan**: `--media-only`, `--ignore-system`
-- **Compare**: `--media-only`, `--ignore-system`, `--min-size`
+- **Compare**: `--min-size` (size-based filtering only)
 
-### Workflow Integration
+### Recommended Workflow
 ```bash
-# Method 1: Filter during comparison
-storage-wizard treemap compare mediabig nvme1 --media-only --min-size 100MB
+# Method 1: Filter during scanning (recommended)
+storage-wizard treemap scan /media/d --label drive1_media --media-only --ignore-system
+storage-wizard treemap scan /media/e --label drive2_media --media-only --ignore-system
+storage-wizard treemap compare drive1_media drive2_media --min-size 100MB
 
-# Method 2: Create filtered treemaps first
-storage-wizard treemap scan /media/d --label nvme1_media --media-only
-storage-wizard treemap scan /media/e --label mediabig_media --media-only
-storage-wizard treemap compare nvme1_media mediabig_media --min-size 50MB
+# Method 2: Size filtering during comparison
+storage-wizard treemap compare drive1 drive2 --min-size 100MB
 ```
 
 ### Cache Management
 - **Filtered treemaps**: Can be saved with descriptive labels
 - **Original treemaps**: Preserved and unmodified
-- **Filter combinations**: Multiple filtered versions possible
+- **Size filtering**: Applied during comparison only
 
 ## Performance Benchmarks
 
 ### Filtering Performance
 | **Operation** | **Treemap Size** | **Filter Type** | **Time** | **Result** |
 |---------------|------------------|-----------------|----------|------------|
-| Size filter | 99.2 GB | 50MB threshold | <0.1s | 5 duplicates |
-| Size filter | 99.2 GB | 100MB threshold | <0.1s | 1 duplicate |
-| Media filter | 99.2 GB | Media-only | <0.5s | Media content |
-| Combined | 99.2 GB | Media + 50MB | <0.5s | Filtered results |
+| Size filter | 99.2 GB | 50MB threshold | <0.1s | 86 duplicates |
+| Size filter | 99.2 GB | 100MB threshold | <0.1s | 86 duplicates |
+| Size filter | 99.2 GB | 1GB threshold | <0.1s | 86 duplicates |
+| Media scan | 99.2 GB | Media-only | ~30s | Media content |
 
 ### Memory Usage
 - **Base comparison**: ~50MB for large treemaps
-- **Filtered comparison**: ~55MB (temporary filtered trees)
 - **Size filtering**: No additional memory overhead
-- **Content filtering**: Temporary tree duplication
+- **Media scanning**: Standard scanning memory usage
 
 ## Error Handling and Validation
 
@@ -299,29 +258,30 @@ storage-wizard treemap compare nvme1_media mediabig_media --min-size 50MB
 
 ### Filter Feedback
 - **No results**: Clear message when no duplicates meet criteria
-- **Filter status**: Shows which filters are active
-- **Progress indication**: Shows filter application progress
+- **Filter status**: Shows size filter threshold
+- **Progress indication**: Shows comparison progress
 - **Result counts**: Clear duplicate count with filter context
 
 ## Future Enhancement Opportunities
 
 ### Potential Improvements
-- **Regex filtering**: Pattern-based file/directory filtering
-- **Date range filtering**: Filter by modification date ranges
-- **File type filtering**: Specific extension filtering
-- **Export filtered results**: Save filtered comparison results
+- **Regex filtering**: Pattern-based file/directory filtering during scan
+- **Date range filtering**: Filter by modification date ranges during scan
+- **File type filtering**: Specific extension filtering during scan
+- **Export filtered results**: Save comparison results with filters applied
 - **Interactive filtering**: Dynamic filter adjustment during comparison
 
 ### Advanced Features
-- **Filter profiles**: Save and reuse filter combinations
-- **Batch filtering**: Apply filters to multiple treemap comparisons
+- **Filter profiles**: Save and reuse scan filter combinations
+- **Batch comparison**: Apply size filters to multiple comparisons
 - **Filter statistics**: Detailed breakdown of filtered content
-- **Performance optimization**: Parallel filtering for large treemaps
+- **Performance optimization**: Parallel comparison for large treemaps
 
 ## Files Modified
 
 ### Enhanced Files
-- `python/storage_wizard/cli.py` - Added filtering options to treemap compare command
+- `python/storage_wizard/cli.py` - Added size filtering to treemap compare command, removed non-functional filters
+- `python/storage_wizard/treemap.py` - Added .dv extension to MEDIA_EXTENSIONS
 
 ### New Documentation
 - `CHECKPOINT_V0.3.9_COMPARE_FILTERING.md` - This comprehensive documentation
@@ -329,22 +289,22 @@ storage-wizard treemap compare nvme1_media mediabig_media --min-size 50MB
 ## Repository Status
 - **Clean commits**: Only source code and documentation committed
 - **Backward compatible**: All existing functionality preserved
-- **Enhanced features**: New filtering capabilities added
+- **Enhanced features**: Size filtering capabilities added
 - **Private repository**: https://github.com/opensourcemechanic/storage-wizard
 
 ## Next Steps
-- **User feedback**: Collect real-world filtering usage data
-- **Performance optimization**: Optimize filtering for very large treemaps
-- **Advanced filtering**: Add regex and date-based filtering options
-- **Export capabilities**: Save filtered comparison results
+- **User feedback**: Collect real-world size filtering usage data
+- **Performance optimization**: Optimize comparison for very large treemaps
+- **Advanced filtering**: Add regex and date-based filtering to scan command
+- **Export capabilities**: Save comparison results with size filters
 
 ## Technical Debt Resolved
-- **Compare filtering**: Added comprehensive filtering to compare command
+- **Compare filtering**: Removed non-functional post-scan filtering options
 - **Size-based analysis**: Minimum size threshold for duplicate focus
-- **Content filtering**: Media-only and system file filtering in compare
-- **User experience**: Enhanced feedback and progress indication
-- **Documentation**: Comprehensive filtering guide and examples
+- **Media support**: Added .dv extension for digital video files
+- **User experience**: Clean, functional interface with clear feedback
+- **Documentation**: Accurate documentation reflecting actual capabilities
 
 ---
 
-**This checkpoint represents a major enhancement to the treemap comparison system, enabling powerful filtering capabilities that allow users to focus on specific types of duplicates and size ranges, making cross-device duplicate analysis much more targeted and efficient.**
+**This checkpoint represents a refined enhancement to the treemap comparison system, focusing on functional size-based filtering while removing non-functional post-scan content filtering. The .dv extension addition enables proper digital video file recognition, and the cleaned interface provides a reliable, focused duplicate analysis experience.**

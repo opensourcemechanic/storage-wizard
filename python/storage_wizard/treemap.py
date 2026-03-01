@@ -78,7 +78,7 @@ MEDIA_EXTENSIONS: Set[str] = {
     ".arw", ".dng", ".orf", ".rw2", ".pef", ".srw",
     # Video
     ".mp4", ".mov", ".avi", ".mkv", ".wmv", ".flv", ".m4v",
-    ".mpg", ".mpeg", ".3gp", ".webm", ".mts", ".m2ts",
+    ".mpg", ".mpeg", ".3gp", ".webm", ".mts", ".m2ts", ".dv",
     # Audio
     ".mp3", ".flac", ".aac", ".wav", ".ogg", ".wma", ".m4a",
     ".aiff", ".opus",
