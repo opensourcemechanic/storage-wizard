@@ -56,6 +56,526 @@ def _parse_size_string(size_str: str) -> int:
     return int(number * multipliers[unit])
 
 
+def _find_first_difference(node1, node2, path1=None, path2=None):
+    """Find first differing subtree between two nodes."""
+    if path1 is None:
+        path1 = []
+    if path2 is None:
+        path2 = []
+    
+    # Check for content differences first (same name, different content)
+    if node1.name == node2.name:
+        if node1.file_count != node2.file_count or node1.size != node2.size:
+            return node1, node2, path1, path2, "content"
+    
+    # Check if nodes are different at this level
+    if len(node1.children) != len(node2.children):
+        return node1, node2, path1, path2, "structure"
+    
+    # Sort children by name for consistent comparison
+    children1 = sorted(node1.children, key=lambda x: x.name.lower())
+    children2 = sorted(node2.children, key=lambda x: x.name.lower())
+    
+    # Check for differences in child names
+    names1 = {c.name for c in children1}
+    names2 = {c.name for c in children2}
+    
+    if names1 != names2:
+        return node1, node2, path1, path2, "structure"
+    
+    # Recursively check children
+    for child1, child2 in zip(children1, children2):
+        if child1.hash != child2.hash:
+            # Found difference, go deeper
+            result = _find_first_difference(
+                child1, child2, 
+                path1 + [child1.name], 
+                path2 + [child2.name]
+            )
+            if result:
+                return result
+    
+    # No differences found
+    return None
+
+
+def _display_side_by_side_comparison(trees, dup_map, max_depth=None):
+    """Display duplicate groups in side-by-side comparison format."""
+    from rich.console import Console, Group
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich.text import Text
+    from rich.columns import Columns
+    from rich.align import Align
+    
+    console = Console()
+    
+    # Find the common root for all trees
+    common_root = _find_common_root([tree[1] for tree in trees])
+    
+    # Create comparison of the common root
+    _display_root_comparison(trees, common_root, dup_map, console)
+    
+    # Check for root-level content differences
+    _display_root_content_differences(trees, console)
+    
+    # Show only the differences
+    _display_differences_only(trees, dup_map, console)
+
+
+def _display_root_content_differences(trees, console):
+    """Display content differences at the root level."""
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich.text import Text
+    
+    if len(trees) < 2:
+        return
+    
+    # Check first two trees for content differences
+    left_label, left_node = trees[0]
+    right_label, right_node = trees[1]
+    
+    # Check if root nodes have different content
+    if left_node.file_count != right_node.file_count or left_node.size != right_node.size:
+        # Create header
+        header_text = Text("🔍 Root Content Differences", style="bold yellow")
+        
+        # Create table
+        table = Table(show_header=False, box=None, padding=0)
+        table.add_column("Left Tree", style="cyan", width=80)
+        table.add_column("Right Tree", style="magenta", width=80)
+        
+        left_size = _format_size(left_node.size)
+        right_size = _format_size(right_node.size)
+        file_diff = left_node.file_count - right_node.file_count
+        size_diff = left_node.size - right_node.size
+        
+        left_info = f"📁 {left_label}\n{left_node.path}\n🔍 Content difference\n📊 {left_size}, {left_node.file_count:,} files"
+        right_info = f"📁 {right_label}\n{right_node.path}\n🔍 Content difference\n📊 {right_size}, {right_node.file_count:,} files"
+        
+        # Add difference summary
+        if file_diff != 0:
+            if file_diff > 0:
+                left_info += f"\n➕ {file_diff:,} more files"
+                right_info += f"\n➖ {abs(file_diff):,} fewer files"
+            else:
+                left_info += f"\n➖ {abs(file_diff):,} fewer files"
+                right_info += f"\n➕ {abs(file_diff):,} more files"
+        
+        if size_diff != 0:
+            size_diff_str = _format_size(abs(size_diff))
+            if size_diff > 0:
+                left_info += f"\n➕ {size_diff_str} larger"
+                right_info += f"\n➖ {size_diff_str} smaller"
+            else:
+                left_info += f"\n➖ {size_diff_str} smaller"
+                right_info += f"\n➕ {size_diff_str} larger"
+        
+        table.add_row(left_info, right_info)
+        
+        # Create panel
+        panel = Panel(
+            table,
+            title=header_text,
+            border_style="bright_yellow",
+            padding=(1, 2)
+        )
+        
+        console.print(panel)
+        console.print()
+        
+        # Show specific subdirectories that differ
+        _show_differing_subdirectories(left_node, right_node, left_label, right_label, console)
+
+
+def _show_differing_subdirectories(left_node, right_node, left_label, right_label, console):
+    """Show specific subdirectories that have content differences."""
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich.text import Text
+    
+    # Create header
+    header_text = Text("📂 Subdirectories with Content Differences", style="bold yellow")
+    
+    # Create table for differing subdirectories
+    table = Table(show_header=False, box=None, padding=0)
+    table.add_column("Left Tree", style="cyan", width=80)
+    table.add_column("Right Tree", style="magenta", width=80)
+    
+    # Find all child directories with same name but different content
+    left_children = {c.name: c for c in left_node.children}
+    right_children = {c.name: c for c in right_node.children}
+    
+    # Find common names with different content
+    common_names = set(left_children.keys()) & set(right_children.keys())
+    differing_dirs = []
+    
+    for name in common_names:
+        left_child = left_children[name]
+        right_child = right_children[name]
+        
+        # Check if content differs (different file count or size)
+        if (left_child.file_count != right_child.file_count or 
+            left_child.size != right_child.size or
+            left_child.hash != right_child.hash):
+            differing_dirs.append((name, left_child, right_child))
+    
+    # Sort by size difference (largest first)
+    differing_dirs.sort(key=lambda x: abs(x[1].size - x[2].size), reverse=True)
+    
+    # Show top 10 differing directories
+    for i, (name, left_child, right_child) in enumerate(differing_dirs[:10]):
+        left_size = _format_size(left_child.size)
+        right_size = _format_size(right_child.size)
+        file_diff = left_child.file_count - right_child.file_count
+        size_diff = left_child.size - right_child.size
+        
+        left_info = f"📂 {name}/\n📊 {left_size}, {left_child.file_count:,} files"
+        right_info = f"📂 {name}/\n📊 {right_size}, {right_child.file_count:,} files"
+        
+        # Add difference summary
+        if file_diff != 0:
+            if file_diff > 0:
+                left_info += f"\n➕ {file_diff:,} more files"
+                right_info += f"\n➖ {abs(file_diff):,} fewer files"
+            else:
+                left_info += f"\n➖ {abs(file_diff):,} fewer files"
+                right_info += f"\n➕ {abs(file_diff):,} more files"
+        
+        if size_diff != 0:
+            size_diff_str = _format_size(abs(size_diff))
+            if size_diff > 0:
+                left_info += f"\n➕ {size_diff_str} larger"
+                right_info += f"\n➖ {size_diff_str} smaller"
+            else:
+                left_info += f"\n➖ {size_diff_str} smaller"
+                right_info += f"\n➕ {size_diff_str} larger"
+        
+        table.add_row(left_info, right_info)
+    
+    if differing_dirs:
+        # Create panel
+        panel = Panel(
+            table,
+            title=header_text,
+            border_style="bright_red",
+            padding=(1, 2)
+        )
+        
+        console.print(panel)
+        
+        if len(differing_dirs) > 10:
+            console.print(f"[dim]... and {len(differing_dirs) - 10} more differing subdirectories[/dim]")
+    else:
+        console.print("[green]✅ No subdirectories with content differences found[/green]")
+    
+    console.print()
+
+
+def _find_common_root(nodes):
+    """Find the common root path among multiple nodes."""
+    if not nodes:
+        return None
+    
+    # Get all paths
+    paths = [node.path for node in nodes]
+    
+    # Find common prefix
+    common_parts = None
+    for path in paths:
+        parts = Path(path).parts
+        if common_parts is None:
+            common_parts = parts
+        else:
+            # Find common prefix
+            common_parts = [a for a, b in zip(common_parts, parts) if a == b]
+    
+    return Path(*common_parts) if common_parts else Path("/")
+
+
+def _display_root_comparison(trees, common_root, dup_map, console):
+    """Display comparison of the common root directory."""
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich.text import Text
+    
+    # Create header
+    header_text = Text(f"🎯 Root Comparison: {common_root}", style="bold yellow")
+    
+    # Create comparison table
+    table = Table(show_header=False, box=None, padding=0)
+    table.add_column("Tree", style="cyan", width=80)
+    table.add_column("Tree", style="magenta", width=80)
+    
+    # Add tree information
+    for i in range(0, len(trees), 2):
+        if i + 1 < len(trees):
+            left_label, left_node = trees[i]
+            right_label, right_node = trees[i + 1]
+            
+            left_size = _format_size(left_node.size)
+            right_size = _format_size(right_node.size)
+            
+            left_info = f"📁 {left_label}\n{left_node.path}\n📊 {left_size}, {left_node.file_count:,} files"
+            right_info = f"📁 {right_label}\n{right_node.path}\n📊 {right_size}, {right_node.file_count:,} files"
+            
+            table.add_row(left_info, right_info)
+        elif i < len(trees):
+            # Handle odd number of trees
+            left_label, left_node = trees[i]
+            left_size = _format_size(left_node.size)
+            left_info = f"📁 {left_label}\n{left_node.path}\n📊 {left_size}, {left_node.file_count:,} files"
+            table.add_row(left_info, "")
+    
+    # Create panel
+    panel = Panel(
+        table,
+        title=header_text,
+        border_style="bright_blue",
+        padding=(1, 2)
+    )
+    
+    console.print(panel)
+    console.print()
+
+
+def _display_differences_only(trees, dup_map, console):
+    """Display only the differences between trees."""
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich.text import Text
+    
+    if not dup_map:
+        console.print("[green]✅ No differences found - trees are identical[/green]")
+        return
+    
+    # Get common root for relative paths
+    common_root = _find_common_root([tree[1] for tree in trees])
+    
+    # Filter to show only actual differences, not identical subtrees
+    actual_differences = {}
+    for hash_val, entries in dup_map.items():
+        if len(entries) < 2:
+            continue
+            
+        # Take first two entries for comparison
+        left_label, left_node = entries[0]
+        right_label, right_node = entries[1]
+        
+        # Find first difference
+        diff_result = _find_first_difference(left_node, right_node)
+        
+        # Only include if there's an actual difference
+        if diff_result:
+            actual_differences[hash_val] = entries
+    
+    if not actual_differences:
+        console.print("[green]✅ No structural differences found - all subtrees are identical[/green]")
+        return
+    
+    # Create header
+    header_text = Text(f"🔍 Structural Differences Found ({len(actual_differences)} groups)", style="bold yellow")
+    
+    # Create table for differences
+    table = Table(show_header=False, box=None, padding=0)
+    table.add_column("Left Tree", style="cyan", width=80)
+    table.add_column("Right Tree", style="magenta", width=80)
+    
+    for hash_val, entries in actual_differences.items():
+        # Take first two entries for comparison
+        left_label, left_node = entries[0]
+        right_label, right_node = entries[1]
+        
+        # Find relative paths from common root
+        try:
+            left_rel_path = str(Path(left_node.path).relative_to(common_root))
+        except ValueError:
+            left_rel_path = left_node.path
+            
+        try:
+            right_rel_path = str(Path(right_node.path).relative_to(common_root))
+        except ValueError:
+            right_rel_path = right_node.path
+        
+        # Find first difference
+        diff_result = _find_first_difference(left_node, right_node)
+        
+        if diff_result:
+            diff_left, diff_right, path_left, path_right, diff_type = diff_result
+            
+            if diff_type == "structure":
+                # Show path to structural difference
+                left_path_display = " → ".join(path_left[-3:] if len(path_left) > 3 else path_left)
+                right_path_display = " → ".join(path_right[-3:] if len(path_right) > 3 else path_right)
+                
+                left_info = f"📂 {left_label}\n{left_rel_path}\n📍 {left_path_display}"
+                right_info = f"📂 {right_label}\n{right_rel_path}\n📍 {right_path_display}"
+                
+                # Show missing/extra details
+                left_children = sorted(diff_left.children, key=lambda x: x.name.lower())
+                right_children = sorted(diff_right.children, key=lambda x: x.name.lower())
+                
+                left_names = {c.name for c in left_children}
+                right_names = {c.name for c in right_children}
+                
+                missing_in_left = right_names - left_names
+                extra_in_left = left_names - right_names
+                
+                if missing_in_left:
+                    missing_text = "❌ Missing: " + ", ".join(sorted(list(missing_in_left))[:3])
+                    if len(missing_in_left) > 3:
+                        missing_text += f" (+{len(missing_in_left)-3} more)"
+                    left_info += f"\n{missing_text}"
+                
+                if extra_in_left:
+                    extra_text = "➕ Extra: " + ", ".join(sorted(list(extra_in_left))[:3])
+                    if len(extra_in_left) > 3:
+                        extra_text += f" (+{len(extra_in_left)-3} more)"
+                    right_info += f"\n{extra_text}"
+            else:
+                # Content difference - show summary statistics
+                left_size = _format_size(left_node.size)
+                right_size = _format_size(right_node.size)
+                file_diff = left_node.file_count - right_node.file_count
+                size_diff = left_node.size - right_node.size
+                
+                left_info = f"📂 {left_label}\n{left_rel_path}\n🔍 Content difference\n📊 {left_size}, {left_node.file_count:,} files"
+                right_info = f"📂 {right_label}\n{right_rel_path}\n🔍 Content difference\n📊 {right_size}, {right_node.file_count:,} files"
+                
+                # Add difference summary
+                if file_diff != 0:
+                    if file_diff > 0:
+                        left_info += f"\n➕ {file_diff:,} more files"
+                        right_info += f"\n➖ {abs(file_diff):,} fewer files"
+                    else:
+                        left_info += f"\n➖ {abs(file_diff):,} fewer files"
+                        right_info += f"\n➕ {abs(file_diff):,} more files"
+                
+                if size_diff != 0:
+                    size_diff_str = _format_size(abs(size_diff))
+                    if size_diff > 0:
+                        left_info += f"\n➕ {size_diff_str} larger"
+                        right_info += f"\n➖ {size_diff_str} smaller"
+                    else:
+                        left_info += f"\n➖ {size_diff_str} smaller"
+                        right_info += f"\n➕ {size_diff_str} larger"
+        
+        table.add_row(left_info, right_info)
+    
+    # Create panel
+    panel = Panel(
+        table,
+        title=header_text,
+        border_style="bright_red",
+        padding=(1, 2)
+    )
+    
+    console.print(panel)
+
+
+def _create_comparison_panel(group_num, total_groups, left_label, left_node, right_label, right_node, diff_result):
+    """Create a single comparison panel for one duplicate group."""
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich.text import Text
+    from rich.columns import Columns
+    from rich.align import Align
+    
+    # Header
+    header_text = Text(f"🎯 Duplicate Group {group_num}/{total_groups}", style="bold yellow")
+    
+    # Create comparison table
+    table = Table(show_header=False, box=None, padding=0)
+    table.add_column("Left", style="cyan", width=80)
+    table.add_column("Right", style="magenta", width=80)
+    
+    # Add root paths
+    left_root = f"📁 {left_label}\n{left_node.path}"
+    right_root = f"📁 {right_label}\n{right_node.path}"
+    table.add_row(left_root, right_root)
+    
+    # Add size information
+    left_size = _format_size(left_node.size)
+    right_size = _format_size(right_node.size)
+    left_info = f"📊 {left_size}, {left_node.file_count:,} files"
+    right_info = f"📊 {right_size}, {right_node.file_count:,} files"
+    table.add_row(left_info, right_info)
+    
+    # Add difference information
+    if diff_result:
+        diff_left, diff_right, path_left, path_right, diff_type = diff_result
+        
+        if diff_type == "structure":
+            diff_text = "🔍 STRUCTURE DIFFERENCE FOUND"
+            table.add_row(diff_text, diff_text)
+            
+            # Show paths to difference
+            left_path = " → ".join(path_left[-3:] if len(path_left) > 3 else path_left) if path_left else "Root"
+            right_path = " → ".join(path_right[-3:] if len(path_right) > 3 else path_right) if path_right else "Root"
+            table.add_row(f"📍 Left path: {left_path}", f"📍 Right path: {right_path}")
+            
+            # Show children details
+            left_children = sorted(diff_left.children, key=lambda x: x.name.lower())
+            right_children = sorted(diff_right.children, key=lambda x: x.name.lower())
+            
+            left_names = {c.name for c in left_children}
+            right_names = {c.name for c in right_children}
+            
+            # Show missing/extra children
+            missing_in_left = right_names - left_names
+            extra_in_left = left_names - right_names
+            
+            if missing_in_left:
+                missing_text = "❌ Missing: " + ", ".join(sorted(list(missing_in_left))[:3])
+                if len(missing_in_left) > 3:
+                    missing_text += f" (+{len(missing_in_left)-3} more)"
+                table.add_row(missing_text, "")
+            
+            if extra_in_left:
+                extra_text = "➕ Extra: " + ", ".join(sorted(list(extra_in_left))[:3])
+                if len(extra_in_left) > 3:
+                    extra_text += f" (+{len(extra_in_left)-3} more)"
+                table.add_row(extra_text, "")
+                
+        else:
+            diff_text = "🔍 CONTENT DIFFERENCE FOUND"
+            table.add_row(diff_text, diff_text)
+    else:
+        diff_text = "✅ IDENTICAL SUBTREES"
+        table.add_row(diff_text, diff_text)
+        
+        # Show some sample content for identical subtrees
+        if left_node.children:
+            sample_children = sorted(left_node.children, key=lambda x: x.size, reverse=True)[:3]
+            sample_text = "📁 Sample: " + ", ".join([f"{c.name}/ ({_format_size(c.size)})" for c in sample_children])
+            table.add_row(sample_text, sample_text)
+    
+    # Create panel
+    panel = Panel(
+        table,
+        title=header_text,
+        border_style="bright_blue",
+        padding=(1, 2)
+    )
+    
+    return panel
+
+
+def _format_size(size_bytes):
+    """Format bytes into human readable string."""
+    if size_bytes == 0:
+        return "0 B"
+    
+    size_names = ["B", "KB", "MB", "GB", "TB"]
+    i = 0
+    while size_bytes >= 1024 and i < len(size_names) - 1:
+        size_bytes /= 1024.0
+        i += 1
+    
+    return f"{size_bytes:.1f} {size_names[i]}"
+
+
 @app.command("fast-treemap")
 def fast_treemap(
     paths: List[str] = typer.Argument(..., help="Directories to scan for duplicate analysis"),
@@ -1196,6 +1716,8 @@ def treemap_compare(
         help="Display only directories suspected of being duplicates (prune unique subtrees)"),
     min_size: Optional[str] = typer.Option(None, "--min-size", "-s",
         help="Minimum size threshold for duplicates (e.g., 100MB, 1GB, 500KB)"),
+    side_by_side: bool = typer.Option(False, "--side-by-side",
+        help="Show side-by-side comparison of differences (more intuitive than sparse view)"),
 ) -> None:
     """Compare previously saved treemaps by label."""
     store = Path(store_dir) if store_dir else None
@@ -1230,12 +1752,18 @@ def treemap_compare(
             console.print(f"[yellow]No duplicates found ≥ {min_size}[/yellow]")
             return
     
-    _treemap.display_trees(trees, dup_map, max_depth=display_depth, sparse=sparse)
+    # Choose display method
+    if side_by_side:
+        _display_side_by_side_comparison(trees, dup_map, display_depth)
+    else:
+        _treemap.display_trees(trees, dup_map, max_depth=display_depth, sparse=sparse)
 
     if dup_map:
         console.print(f"[bold yellow]{len(dup_map)}[/bold yellow] duplicate subtree hash(es) found.")
         if min_size:
             console.print(f"[dim]Showing only duplicates ≥ {min_size}[/dim]")
+        if side_by_side:
+            console.print(f"[dim]Side-by-side comparison view[/dim]")
     else:
         console.print("[green]No duplicate subtrees found.[/green]")
 
