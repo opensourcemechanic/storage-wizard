@@ -20,7 +20,7 @@ This project was created using modern AI-assisted development practices:
 
 - **Intelligent Code Generation**: AI-powered implementation of complex algorithms
 - **Rapid Prototyping**: Fast iteration on features and optimizations
-- **Performance Optimization**: AI-suggested improvements for speed and memory efficiency
+- **Performance Optimization**: User-conceptualized performance improvements with AI implementation
 - **Documentation**: AI-generated comprehensive documentation and examples
 - **Testing**: AI-assisted test case generation and validation
 
@@ -278,14 +278,36 @@ This project showcases modern AI-assisted software development practices:
 #### Development Checkpoints
 The project uses checkpoint-based development with comprehensive documentation:
 
+- **v0.3.9.3**: Enhanced side-by-side comparison with specific directory differences
+- **v0.3.9**: Treemap compare filtering with size-based analysis
 - **v0.3.7**: Multi-path fast treemap with cross-device duplicate analysis
 - **v0.3.6**: Fast treemap with duplicate detection (20x speedup)
 - **v0.3.5**: Ultra-fast metadata scanner (125x speedup)
 - **v0.3.4**: Cache versioning and safety improvements
 - **v0.3**: Advanced set operations and WSL integration
 
+#### Performance Improvements (User-Conceptualized)
+
+Major performance optimizations were based on user-suggested concepts:
+
+- **Cached Metadata Concept** (User) → **Fast Scanner** (AI Implementation)
+  - 125x speedup through metadata-only scanning
+  - Avoids expensive per-file stat() calls
+  - Instant directory structure analysis
+
+- **Depth Control Concept** (User) → **Configurable Scan Depth** (AI Implementation)
+  - Prevents runaway scanning of deep directory structures
+  - User-controllable analysis complexity
+
+- **Performance Concerns** (User) → **File Sampling & Efficient Algorithms** (AI Implementation)
+  - 20x speedup in treemap scanning
+  - Intelligent file sampling for duplicate detection
+  - Memory-efficient operations
+
+The user's performance concepts were the catalyst for all major speed improvements, with AI providing specific algorithmic implementations and optimizations.
+
 #### AI-Generated Features
-- **Performance Optimizations**: AI-suggested algorithm improvements
+- **Performance Optimizations**: User-conceptualized performance improvements with AI implementation
 - **Code Architecture**: AI-designed modular structure
 - **Documentation**: AI-generated comprehensive guides
 - **Testing**: AI-assisted test case creation and validation
