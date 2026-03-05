@@ -480,6 +480,26 @@ def list_saved_treemaps(store_dir: Optional[Path] = None) -> List[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Cross-treemap search (offline catalog)
+# ---------------------------------------------------------------------------
+
+def search_treemap_nodes(
+    node: TreeNode,
+    pattern: str,
+    results: List[TreeNode],
+    *,
+    dirs_only: bool = False,
+) -> None:
+    """Recursively collect nodes whose name matches *pattern* (fnmatch glob)."""
+    import fnmatch
+    if fnmatch.fnmatch(node.name, pattern):
+        if not dirs_only or node.children:
+            results.append(node)
+    for child in node.children:
+        search_treemap_nodes(child, pattern, results, dirs_only=dirs_only)
+
+
+# ---------------------------------------------------------------------------
 # Duplicate detection across trees
 # ---------------------------------------------------------------------------
 

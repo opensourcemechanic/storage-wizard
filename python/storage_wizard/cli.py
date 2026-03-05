@@ -1771,6 +1771,82 @@ def treemap_list(
     console.print(table)
 
 
+@treemap_app.command("locate")
+def treemap_locate(
+    pattern: str = typer.Argument(...,
+        help="Name pattern to search for (supports * and ? globs, e.g. 'Sept2001*', '*.dv')"),
+    store_dir: Optional[str] = typer.Option(None, "--store",
+        help="Override the treemap store directory"),
+    labels: Optional[str] = typer.Option(None, "--treemaps", "-t",
+        help="Comma-separated labels to search (default: all saved treemaps)"),
+    dirs_only: bool = typer.Option(False, "--dirs",
+        help="Only match directories, not files"),
+    min_size: Optional[str] = typer.Option(None, "--min-size", "-s",
+        help="Only show matches >= this size (e.g. 100MB, 1GB)"),
+) -> None:
+    """Search all saved treemaps for directories matching a name pattern.
+
+    Works offline — drives do not need to be mounted. Useful for finding
+    which drive holds a particular directory or file, similar to how tape
+    backup catalogs locate content across volumes.
+    """
+    store = Path(store_dir) if store_dir else None
+
+    # Determine which treemaps to search
+    if labels:
+        label_list = [l.strip() for l in labels.split(",") if l.strip()]
+    else:
+        label_list = [m["label"] for m in _treemap.list_saved_treemaps(store)]
+
+    if not label_list:
+        console.print("[dim]No saved treemaps found.[/dim]")
+        raise typer.Exit(0)
+
+    min_bytes = _parse_size_string(min_size) if min_size else 0
+
+    table = Table(
+        title=f"Search results for [bold cyan]{pattern}[/bold cyan]",
+        show_lines=True,
+    )
+    table.add_column("Treemap", style="bold cyan")
+    table.add_column("Path")
+    table.add_column("Size", justify="right")
+    table.add_column("Files", justify="right")
+    table.add_column("Scanned", style="dim")
+
+    total_hits = 0
+    for lbl in label_list:
+        try:
+            meta, node = _treemap.load_treemap(lbl, store)
+        except FileNotFoundError:
+            console.print(f"  [red]Treemap not found: {lbl}[/red]")
+            continue
+
+        hits: list = []
+        _treemap.search_treemap_nodes(node, pattern, hits, dirs_only=dirs_only)
+
+        scanned_at = meta.get("scanned_at", "")[:10]  # date only
+        for hit in sorted(hits, key=lambda n: n.path):
+            if hit.size < min_bytes:
+                continue
+            table.add_row(
+                lbl,
+                hit.path,
+                _format_size(hit.size),
+                f"{hit.file_count:,}" if hit.children else "—",
+                scanned_at,
+            )
+            total_hits += 1
+
+    if total_hits:
+        console.print(table)
+        console.print(f"[bold yellow]{total_hits}[/bold yellow] match(es) across {len(label_list)} treemap(s).")
+    else:
+        console.print(f"[green]No matches for [bold]{pattern}[/bold] in {len(label_list)} treemap(s).[/green]")
+        if min_size:
+            console.print(f"[dim](size filter: ≥ {min_size})[/dim]")
+
+
 @treemap_app.command("label")
 def treemap_label(
     source: str = typer.Argument(...,
