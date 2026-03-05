@@ -123,6 +123,18 @@ def _display_side_by_side_comparison(trees, dup_map, max_depth=None):
     _display_differences_only(trees, dup_map, console)
 
 
+def _diff_text(file_diff, size_diff):
+    """Format a compact delta string for the middle column."""
+    parts = []
+    if file_diff != 0:
+        sign = "+" if file_diff > 0 else "−"
+        parts.append(f"{sign}{abs(file_diff):,} files")
+    if size_diff != 0:
+        sign = "+" if size_diff > 0 else "−"
+        parts.append(f"{sign}{_format_size(abs(size_diff))}")
+    return "\n".join(parts) if parts else "identical"
+
+
 def _display_root_content_differences(trees, console):
     """Display content differences at the root level."""
     from rich.panel import Panel
@@ -138,43 +150,24 @@ def _display_root_content_differences(trees, console):
     
     # Check if root nodes have different content
     if left_node.file_count != right_node.file_count or left_node.size != right_node.size:
-        # Create header
         header_text = Text("🔍 Root Content Differences", style="bold yellow")
         
-        # Create table
-        table = Table(show_header=False, box=None, padding=0)
-        table.add_column("Left Tree", style="cyan", width=80)
-        table.add_column("Right Tree", style="magenta", width=80)
+        table = Table(show_header=False, box=None, padding=(0, 1))
+        table.add_column("Left", style="cyan", no_wrap=False)
+        table.add_column("Δ", style="bold white", no_wrap=True, justify="center")
+        table.add_column("Right", style="magenta", no_wrap=False)
         
         left_size = _format_size(left_node.size)
         right_size = _format_size(right_node.size)
         file_diff = left_node.file_count - right_node.file_count
         size_diff = left_node.size - right_node.size
         
-        left_info = f"📁 {left_label}\n{left_node.path}\n🔍 Content difference\n📊 {left_size}, {left_node.file_count:,} files"
-        right_info = f"📁 {right_label}\n{right_node.path}\n🔍 Content difference\n📊 {right_size}, {right_node.file_count:,} files"
+        left_info = f"📁 {left_label}\n{left_node.path}\n {left_size}, {left_node.file_count:,} files"
+        right_info = f"📁 {right_label}\n{right_node.path}\n {right_size}, {right_node.file_count:,} files"
+        delta = _diff_text(file_diff, size_diff)
         
-        # Add difference summary
-        if file_diff != 0:
-            if file_diff > 0:
-                left_info += f"\n➕ {file_diff:,} more files"
-                right_info += f"\n➖ {abs(file_diff):,} fewer files"
-            else:
-                left_info += f"\n➖ {abs(file_diff):,} fewer files"
-                right_info += f"\n➕ {abs(file_diff):,} more files"
+        table.add_row(left_info, delta, right_info)
         
-        if size_diff != 0:
-            size_diff_str = _format_size(abs(size_diff))
-            if size_diff > 0:
-                left_info += f"\n➕ {size_diff_str} larger"
-                right_info += f"\n➖ {size_diff_str} smaller"
-            else:
-                left_info += f"\n➖ {size_diff_str} smaller"
-                right_info += f"\n➕ {size_diff_str} larger"
-        
-        table.add_row(left_info, right_info)
-        
-        # Create panel
         panel = Panel(
             table,
             title=header_text,
@@ -199,9 +192,10 @@ def _show_differing_subdirectories(left_node, right_node, left_label, right_labe
     header_text = Text("📂 Subdirectories with Content Differences", style="bold yellow")
     
     # Create table for differing subdirectories
-    table = Table(show_header=False, box=None, padding=0)
-    table.add_column("Left Tree", style="cyan", width=80)
-    table.add_column("Right Tree", style="magenta", width=80)
+    table = Table(show_header=False, box=None, padding=(0, 1))
+    table.add_column("Left", style="cyan", no_wrap=False)
+    table.add_column("Δ", style="bold white", no_wrap=True, justify="center")
+    table.add_column("Right", style="magenta", no_wrap=False)
     
     # Find all child directories with same name but different content
     left_children = {c.name: c for c in left_node.children}
@@ -233,26 +227,9 @@ def _show_differing_subdirectories(left_node, right_node, left_label, right_labe
         
         left_info = f"📂 {name}/\n📊 {left_size}, {left_child.file_count:,} files"
         right_info = f"📂 {name}/\n📊 {right_size}, {right_child.file_count:,} files"
+        delta = _diff_text(file_diff, size_diff)
         
-        # Add difference summary
-        if file_diff != 0:
-            if file_diff > 0:
-                left_info += f"\n➕ {file_diff:,} more files"
-                right_info += f"\n➖ {abs(file_diff):,} fewer files"
-            else:
-                left_info += f"\n➖ {abs(file_diff):,} fewer files"
-                right_info += f"\n➕ {abs(file_diff):,} more files"
-        
-        if size_diff != 0:
-            size_diff_str = _format_size(abs(size_diff))
-            if size_diff > 0:
-                left_info += f"\n➕ {size_diff_str} larger"
-                right_info += f"\n➖ {size_diff_str} smaller"
-            else:
-                left_info += f"\n➖ {size_diff_str} smaller"
-                right_info += f"\n➕ {size_diff_str} larger"
-        
-        table.add_row(left_info, right_info)
+        table.add_row(left_info, delta, right_info)
     
     if differing_dirs:
         # Create panel
